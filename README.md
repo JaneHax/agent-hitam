@@ -7,10 +7,19 @@ Hermes Agent add-ons. Copy the folder or unzip the package you need into `~/.her
 | Package | What it does |
 |---------|--------------|
 | [`hermes-guardrail-bypass/`](hermes-guardrail-bypass/) | Disables every non-model security scanner in Hermes (context-file scan, memory scan, cron scan, skill install guard). Version-agnostic patcher — run it after each `hermes update`. Verified on Hermes v0.21.5. |
-| [`har-capture/`](har-capture/) | `harcapture` — CDP-based HAR capture plus the full API discovery workflow (source analysis, HAR capture, WebSocket monitoring, SPA endpoint reverse-engineering). Script in `scripts/har_capture.py`. |
+| [`har-capture/`](har-capture/) | `harcapture` — CDP-based HAR capture plus the full API discovery workflow. Carries the default policy: use `harcapture`, not `curl` + `grep`. Script in `scripts/har_capture.py`. |
 
-Read [`har.md`](har.md) for the short version of when to use `harcapture` instead of
-`curl` + `grep`.
+## Default policy (har-capture)
+
+When exploring a new website or reverse-engineering its API:
+
+- **Default tool: `harcapture`** — captures XHR, Fetch and WebSocket traffic with
+  request/response bodies, headers and an API summary.
+- `curl` + source grep is the **fallback only** when a headless browser is
+  unavailable, the site blocks Playwright, or you only need one known endpoint.
+
+This lives inside [`har-capture/SKILL.md`](har-capture/SKILL.md) under
+**Default Policy**, so the skill routes itself without a separate prompt file.
 
 ## Install
 

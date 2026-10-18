@@ -24,9 +24,37 @@ Capture HTTP requests/responses and WebSocket frames from any website. Saves in 
 - Debugging network issues on websites
 - Reverse engineering API flows (auth, captcha, data submission)
 
-Two complementary approaches exist for discovering undocumented APIs. Use **both** when
-needed — source code first (fast, complete), HAR capture second (actual payloads, timing,
-real behaviour).
+## Default Policy
+
+When exploring a new website or reverse-engineering its API:
+
+- **Default tool: `harcapture`** (CDP-based HAR capture) — **NOT** manual `curl` + `grep`
+  through source code.
+- `harcapture` captures XHR, Fetch, **and** WebSocket traffic automatically with
+  request/response bodies, headers, and an API summary.
+- `curl` + source code grep is the **fallback only** when:
+  1. a headless browser is unavailable,
+  2. the site blocks Playwright, or
+  3. you only need to check a single known endpoint.
+
+**Don't:** download all JS files and manually grep for `fetch()` calls when
+`harcapture` can capture the actual live traffic with real payloads and responses.
+Source code only shows what the client *could* send; HAR capture shows what it
+*actually* sends.
+
+**Standard flow:**
+
+1. `harcapture '<url>' --headless --wait N` — standalone, quick capture
+2. Or start Chrome with `--remote-debugging-port=9222`, then
+   `harcapture --cdp-url http://localhost:9222 '<url>'` — interactive, CDP attach
+3. Review the API summary in the terminal output
+4. HAR file is saved persistently at
+   `~/scripts/har-capture/output/<domain>_<timestamp>.har`
+5. Use the extracted endpoints in scripts
+
+Two complementary approaches exist for discovering undocumented APIs. Reach for
+HAR capture first per the policy above; fall back to source analysis only under the
+conditions listed.
 
 ## Command
 
@@ -135,9 +163,11 @@ harcapture 'https://target.com' -f all -o full-capture.har
 5. HAR file saved — import in DevTools (Network → Import HAR) for full inspection
 6. Use extracted endpoints in scripts (curl, Python requests, etc.)
 
-### Approach 1: Source Code Analysis (Fast)
+### Fallback: Source Code Analysis
 
-Best for: SPAs, static sites, any site that serves readable JavaScript.
+Only when the default policy above says to fall back. Best for: SPAs, static sites,
+any site that serves readable JavaScript — or when you just need to confirm one
+endpoint exists.
 
 ```bash
 # 1. Download HTML, find JS files
@@ -160,9 +190,10 @@ curl -sL 'https://target.com/app.js' | grep -oP '"/api/[^"]*"'
 - Constants/enums — API field values, status codes
 - Honeypot fields — fields that must be empty (anti-bot)
 
-### Approach 2: HAR Capture (Thorough)
+### Default: HAR Capture
 
-Best for: complex auth flows, encrypted payloads, WebSocket-heavy apps, when source code is minified/obfuscated.
+The default path. Best for: complex auth flows, encrypted payloads, WebSocket-heavy
+apps, and any case where source code is minified or obfuscated.
 
 ```bash
 # Default: XHR + Fetch + WS, manual close (press Enter)
