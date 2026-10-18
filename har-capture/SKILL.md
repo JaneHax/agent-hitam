@@ -1,6 +1,15 @@
 ---
 name: har-capture
-description: "Capture network traffic (XHR, Fetch, WebSocket) from any website using Playwright. Saves HAR 1.2 format, extracts API endpoints automatically. Supports standalone mode and CDP attach to existing browsers."
+description: "Capture network traffic (XHR, Fetch, WebSocket) from any website using Playwright. Saves HAR 1.2 format, extracts API endpoints automatically. Supports standalone mode and CDP attach to existing browsers. Includes the full API discovery workflow: source analysis, HAR capture, WebSocket monitoring, SPA endpoint reverse-engineering."
+triggers:
+  - "find API endpoints"
+  - "capture network traffic"
+  - "reverse engineer API"
+  - "HAR capture"
+  - "what API does this site use"
+  - "how does this website work"
+  - "intercept requests"
+  - "WebSocket capture"
 ---
 
 # HAR Capture Tool
@@ -14,6 +23,10 @@ Capture HTTP requests/responses and WebSocket frames from any website. Saves in 
 - Recording request/response payloads for replay or analysis
 - Debugging network issues on websites
 - Reverse engineering API flows (auth, captcha, data submission)
+
+Two complementary approaches exist for discovering undocumented APIs. Use **both** when
+needed — source code first (fast, complete), HAR capture second (actual payloads, timing,
+real behaviour).
 
 ## Command
 
@@ -122,6 +135,81 @@ harcapture 'https://target.com' -f all -o full-capture.har
 5. HAR file saved — import in DevTools (Network → Import HAR) for full inspection
 6. Use extracted endpoints in scripts (curl, Python requests, etc.)
 
+### Approach 1: Source Code Analysis (Fast)
+
+Best for: SPAs, static sites, any site that serves readable JavaScript.
+
+```bash
+# 1. Download HTML, find JS files
+curl -sL 'https://target.com/' | grep -oP 'src="[^"]*\.js[^"]*"'
+
+# 2. Download each JS file, search for fetch/XMLHttpRequest/axios
+curl -sL 'https://target.com/app.js' | grep -B2 -A10 'fetch('
+curl -sL 'https://target.com/app.js' | grep -oP '"/api/[^"]*"'
+
+# 3. Extract endpoint patterns, methods, payload shapes
+# Look for: JSON.stringify({...}), headers, Content-Type
+```
+
+**What to look for in JS:**
+- `fetch('/api/...')` calls — endpoint + method + body shape
+- `XMLHttpRequest` — older pattern, same info
+- `axios.get/post` — wrapper, same pattern
+- `WebSocket('wss://...')` — WS endpoints
+- Error messages — reveal valid/invalid states
+- Constants/enums — API field values, status codes
+- Honeypot fields — fields that must be empty (anti-bot)
+
+### Approach 2: HAR Capture (Thorough)
+
+Best for: complex auth flows, encrypted payloads, WebSocket-heavy apps, when source code is minified/obfuscated.
+
+```bash
+# Default: XHR + Fetch + WS, manual close (press Enter)
+harcapture 'https://target.com'
+
+# Headless mode (for servers)
+harcapture 'https://target.com' --headless
+
+# Auto-close after 10s idle
+harcapture 'https://target.com' --wait 10
+
+# CDP attach to existing Chrome (captures ALL traffic)
+harcapture --cdp-url http://localhost:9222 'https://target.com'
+
+# Custom output
+harcapture 'https://target.com' -o my_capture.har
+```
+
+**Default filter:** `xhr,fetch,ws` — skips static assets (images, CSS, JS files)
+**Close mode:** Manual (press Enter) — browse the site, trigger actions, then stop
+**Output:** HAR 1.2 file + live API summary in terminal. Saved persistently at `~/scripts/har-capture/output/<domain>_<timestamp>.har`
+**WebSocket:** Captured via CDP (frames recv/sent/connection lifecycle)
+
+### When to use HAR vs curl
+
+| Scenario | Use |
+|---|---|
+| Need to find endpoints | curl + source code |
+| Need actual request/response payloads | HAR capture |
+| Auth flow (cookies, tokens, redirects) | HAR capture |
+| Encrypted/obfuscated JS | HAR capture |
+| WebSocket protocol | HAR capture |
+| Quick one-off endpoint test | curl |
+| Site with readable JS | curl + source code |
+
+## Extracting API Summary from HAR
+
+After capture, the tool auto-extracts unique API endpoints:
+
+```
+  GET    /api/data      Status: 200 | Response: {...}
+  POST   /api/submit    Request: {...}  [POST body]
+  WS     /ws            [12 frames]
+```
+
+HAR files can also be imported in browser DevTools → Network → Import HAR for visual inspection.
+
 ## Output
 
 **Terminal:** Live log of captured requests + API summary at the end.
@@ -143,6 +231,8 @@ WS frames saved in HAR under `_websockets[]` with direction, data, and timestamp
 
 ## Pitfalls
 
+### Tool internals
+
 1. **Event listener syntax** — Playwright's CDP session does NOT support `@cdp.on()` decorator syntax. Use direct method calls: `cdp.on('Network.webSocketFrameReceived', handler)`, NOT `@cdp.on('Network.webSocketFrameReceived')`. The decorator pattern causes `TypeError` at runtime.
 
 2. **`asyncio.sleep` in event handlers** — CDP event handlers run in the event loop. Using `await asyncio.sleep()` inside a handler blocks all other event processing. Use fire-and-forget patterns or queue events for later processing.
@@ -155,7 +245,19 @@ WS frames saved in HAR under `_websockets[]` with direction, data, and timestamp
 
 6. **Playwright `page.on("response")` misses raw CDP traffic** — In CDP attach mode, if navigation is triggered via raw CDP websocket (`Page.navigate`), Playwright's response listener does NOT see those responses. The CDP attach mode uses raw CDP `Network.*` events instead, which capture ALL traffic regardless of navigation source.
 
-7. **SPA routing may not trigger API calls** — Client-side routing (React Router, Next.js, etc.) navigates without server requests. Navigating to `/puzzle`, `/memory`, `/leaderboard` on an SPA may produce zero XHR/Fetch traffic. API calls only happen on user interactions (button clicks, form submissions, data fetches). Don't assume navigation = API calls.
+### Discovery process
+
+7. **SPA routing may not trigger API calls** — Client-side routing (React Router, Next.js, Vue Router) navigates without server requests. Navigating to `/dashboard`, `/settings`, `/profile` on an SPA may produce zero XHR/Fetch traffic. API calls only happen on user interactions (button clicks, form submissions, data fetches). For SPA API discovery you MUST interact with the page, not just navigate between routes.
+
+8. **Minified JS is still readable** — Use `grep` for patterns, don't try to read the whole file. Search for `fetch(`, `/api/`, `endpoint`, `url:`.
+
+9. **Some APIs are server-side only** — If an endpoint is called by the server (SSR, form POST), it won't appear in client JS or network capture. Look at form `action` attributes and `<script>` blocks in SSR HTML.
+
+10. **"Invalid client" vs "invalid code"** — When fuzzing API endpoints, differentiate between request-level errors (missing headers/origin → "invalid client") and content-level errors ("invalid code"). Always test with proper headers (Referer, Origin, User-Agent) first to ensure you're getting content-level errors.
+
+11. **Rate limiting on API fuzzing** — When testing many codes/inputs, add 1-2s delays between requests. Some sites rate-limit by IP even without explicit rate limit headers.
+
+12. **Honeypot fields** — Many SPAs include hidden form fields (honeypot) that must be empty. Bot detection checks if these are filled. When replicating API calls programmatically, always check for `display: none` fields and exclude them.
 
 ## Limitations
 
@@ -171,4 +273,15 @@ WS frames saved in HAR under `_websockets[]` with direction, data, and timestamp
 
 Script: `scripts/har_capture.py` (relative to this skill directory)
 Symlink: `~/.hermes/node/bin/harcapture`
-References: `references/cdp-protocol.md`, `references/api-discovery-patterns.md`
+
+## References
+
+| File | Contents |
+|------|----------|
+| `references/cdp-protocol.md` | CDP domain/method reference for capture |
+| `references/interactive-cdp-workflow.md` | Attaching to an interactive browser session |
+| `references/api-discovery-patterns.md` | Endpoint pattern extraction |
+| `references/spa-api-discovery.md` | SPA-specific discovery strategy |
+| `references/auth-flow-capture.md` | Capturing login/token/redirect flows |
+| `references/response-analysis.md` | Reading captured responses |
+| `references/cdp-pitfalls.md` | CDP gotchas |

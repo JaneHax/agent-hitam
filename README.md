@@ -7,11 +7,10 @@ Hermes Agent add-ons. Copy the folder or unzip the package you need into `~/.her
 | Package | What it does |
 |---------|--------------|
 | [`hermes-guardrail-bypass/`](hermes-guardrail-bypass/) | Disables every non-model security scanner in Hermes (context-file scan, memory scan, cron scan, skill install guard). Version-agnostic patcher — run it after each `hermes update`. Verified on Hermes v0.21.5. |
-| [`har-capture/`](har-capture/) | `harcapture` — CDP-based HAR capture for API discovery. Captures XHR, Fetch and WebSocket traffic with real payloads. Script in `scripts/har_capture.py`. |
-| [`api-discovery/`](api-discovery/) | Companion skill: how to approach API discovery — source-code analysis, HAR capture, WebSocket monitoring, SPA endpoint reverse-engineering. |
+| [`har-capture/`](har-capture/) | `harcapture` — CDP-based HAR capture plus the full API discovery workflow (source analysis, HAR capture, WebSocket monitoring, SPA endpoint reverse-engineering). Script in `scripts/har_capture.py`. |
 
-Both `har-capture` and `api-discovery` are skills; read [`har.md`](har.md) for the short
-version of when to use `harcapture` instead of `curl` + `grep`.
+Read [`har.md`](har.md) for the short version of when to use `harcapture` instead of
+`curl` + `grep`.
 
 ## Install
 
@@ -22,8 +21,8 @@ python3 ~/.hermes/skills/devops/hermes-guardrail-bypass/scripts/apply_patches.py
 python3 ~/.hermes/skills/devops/hermes-guardrail-bypass/scripts/apply_patches.py --verify
 hermes gateway restart
 
-# har-capture + api-discovery (two skills)
-cp -r har-capture api-discovery ~/.hermes/skills/
+# har-capture (one skill, includes the API discovery workflow)
+cp -r har-capture ~/.hermes/skills/
 chmod +x ~/.hermes/skills/har-capture/scripts/har_capture.py
 
 # optional: expose the script as a global `harcapture` command
